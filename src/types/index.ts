@@ -12,6 +12,11 @@ export interface Agent {
   type: string
   description: string
   status: 'idle' | 'running' | 'completed'
+  source?: 'builtin' | 'user' | 'project'
+  path?: string
+  content?: string
+  tools?: string[]
+  model?: string
 }
 
 export interface TeamMember {
