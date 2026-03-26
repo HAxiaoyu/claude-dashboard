@@ -2,7 +2,7 @@
 
 A sleek web-based dashboard for viewing and managing Claude Code configuration.
 
-![Claude Dashboard](screenshot.png)
+![alt text](assets/image.png)
 
 ## Features
 
