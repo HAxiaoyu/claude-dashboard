@@ -1,13 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
-
-interface Session {
-  id: string
-  path: string
-  createdAt?: string
-  modifiedAt?: string
-  files?: string[]
-}
+import { ref, computed, onMounted } from 'vue'
 
 interface HistoryEntry {
   timestamp?: number
@@ -33,24 +25,58 @@ interface Conversation {
   messages: ConversationMessage[]
 }
 
-const sessions = ref<Session[]>([])
+interface GroupedSession {
+  sessionId: string
+  project?: string
+  lastTimestamp?: number
+  displays: string[]
+  entryCount: number
+}
+
 const history = ref<HistoryEntry[]>([])
-const selectedSession = ref<Session | null>(null)
+const selectedSessionId = ref<string | null>(null)
 const selectedConversation = ref<Conversation | null>(null)
 const loading = ref(true)
+const loadingConversation = ref(false)
 const error = ref('')
-const activeTab = ref<'active' | 'history'>('active')
 
-async function fetchSessions() {
+// Group history by session id
+const groupedSessions = computed<GroupedSession[]>(() => {
+  const groups = new Map<string, GroupedSession>()
+
+  for (const entry of history.value) {
+    const sid = entry.sessionId || 'unknown'
+    if (!groups.has(sid)) {
+      groups.set(sid, {
+        sessionId: sid,
+        project: entry.project,
+        lastTimestamp: entry.timestamp,
+        displays: [],
+        entryCount: 0
+      })
+    }
+
+    const group = groups.get(sid)!
+    group.entryCount++
+    if (entry.display && group.displays.length < 3) {
+      group.displays.push(entry.display)
+    }
+    if (entry.timestamp && (!group.lastTimestamp || entry.timestamp > group.lastTimestamp)) {
+      group.lastTimestamp = entry.timestamp
+    }
+  }
+
+  // Sort by last timestamp descending
+  return Array.from(groups.values()).sort((a, b) =>
+    (b.lastTimestamp || 0) - (a.lastTimestamp || 0)
+  )
+})
+
+async function fetchHistory() {
   try {
-    const [sessionsRes, historyRes] = await Promise.all([
-      fetch('/api/sessions'),
-      fetch('/api/sessions/history')
-    ])
-    const sessionsData = await sessionsRes.json()
-    const historyData = await historyRes.json()
-    sessions.value = sessionsData.sessions
-    history.value = historyData.history
+    const res = await fetch('/api/sessions/history')
+    const data = await res.json()
+    history.value = data.history || []
   } catch (e) {
     error.value = 'Failed to load sessions'
   } finally {
@@ -58,37 +84,21 @@ async function fetchSessions() {
   }
 }
 
-async function selectSession(session: Session) {
-  try {
-    const res = await fetch(`/api/sessions/${encodeURIComponent(session.id)}`)
-    const data = await res.json()
-    selectedSession.value = data.session
-  } catch (e) {
-    console.error('Failed to load session details')
-  }
-}
-
-async function viewConversation(entry: HistoryEntry) {
-  if (!entry.sessionId) return
+async function selectSession(sessionId: string) {
+  selectedSessionId.value = sessionId
+  selectedConversation.value = null
+  loadingConversation.value = true
 
   try {
-    const res = await fetch(`/api/sessions/${encodeURIComponent(entry.sessionId)}/conversation`)
+    const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/conversation`)
     if (res.ok) {
       const data = await res.json()
       selectedConversation.value = data
     }
   } catch (e) {
     console.error('Failed to load conversation')
-  }
-}
-
-function closeModal() {
-  selectedConversation.value = null
-}
-
-function handleKeydown(e: KeyboardEvent) {
-  if (e.key === 'Escape') {
-    closeModal()
+  } finally {
+    loadingConversation.value = false
   }
 }
 
@@ -98,13 +108,12 @@ function formatDate(dateStr?: string | number): string {
   return date.toLocaleString()
 }
 
-onMounted(() => {
-  fetchSessions()
-  window.addEventListener('keydown', handleKeydown)
-})
+function truncateId(id: string, len: number = 8): string {
+  return id.length > len ? id.substring(0, len) + '...' : id
+}
 
-onUnmounted(() => {
-  window.removeEventListener('keydown', handleKeydown)
+onMounted(() => {
+  fetchHistory()
 })
 </script>
 
@@ -115,196 +124,117 @@ onUnmounted(() => {
     <div v-if="loading" class="text-text-secondary">Loading...</div>
     <div v-else-if="error" class="text-red-500">{{ error }}</div>
 
-    <div v-else>
-      <div class="flex gap-2 mb-4">
-        <button
-          v-for="tab in ['active', 'history'] as const"
-          :key="tab"
-          @click="activeTab = tab"
-          class="px-4 py-2 rounded transition-colors"
-          :class="activeTab === tab ? 'bg-accent text-bg-primary' : 'bg-bg-secondary text-text-secondary hover:text-text-primary border border-border-color'"
-        >
-          {{ tab === 'active' ? 'Active Sessions' : 'History' }}
-        </button>
+    <div v-else class="flex gap-6 h-[calc(100vh-180px)]">
+      <!-- Left: Session List -->
+      <div class="w-80 flex-shrink-0 bg-bg-secondary rounded-lg border border-border-color flex flex-col">
+        <div class="p-3 border-b border-border-color">
+          <span class="text-sm text-text-secondary">{{ groupedSessions.length }} sessions</span>
+        </div>
+        <div class="flex-1 overflow-auto">
+          <div
+            v-for="session in groupedSessions"
+            :key="session.sessionId"
+            @click="selectSession(session.sessionId)"
+            class="p-3 border-b border-border-color cursor-pointer transition-colors"
+            :class="selectedSessionId === session.sessionId ? 'bg-accent/10 border-l-2 border-l-accent' : 'hover:bg-bg-primary'"
+          >
+            <div class="flex items-center justify-between mb-1">
+              <span class="text-xs font-mono text-accent">{{ truncateId(session.sessionId, 12) }}</span>
+              <span class="text-xs text-text-secondary">{{ session.entryCount }} msgs</span>
+            </div>
+            <div v-if="session.lastTimestamp" class="text-xs text-text-secondary mb-1">
+              {{ formatDate(session.lastTimestamp) }}
+            </div>
+            <div v-if="session.project" class="text-xs text-text-secondary truncate mb-1">
+              {{ session.project }}
+            </div>
+            <div v-if="session.displays.length" class="text-xs text-text-primary truncate">
+              {{ session.displays[0] }}
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div v-if="activeTab === 'active'">
-        <div v-if="sessions.length === 0" class="text-text-secondary">
-          No active sessions
-        </div>
-        <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          <div
-            v-for="session in sessions"
-            :key="session.id"
-            @click="selectSession(session)"
-            class="bg-bg-secondary rounded-lg p-4 border border-border-color cursor-pointer hover:border-accent transition-colors"
-            :class="{ 'border-accent': selectedSession?.id === session.id }"
-          >
-            <div class="text-text-primary font-medium font-mono text-sm mb-2">
-              {{ session.id.substring(0, 12) }}...
-            </div>
-            <div class="text-text-secondary text-xs">
-              <div>Path: {{ session.path }}</div>
-              <div>Created: {{ formatDate(session.createdAt) }}</div>
-            </div>
-          </div>
+      <!-- Right: Conversation View -->
+      <div class="flex-1 bg-bg-secondary rounded-lg border border-border-color flex flex-col min-w-0">
+        <div v-if="!selectedSessionId" class="flex-1 flex items-center justify-center text-text-secondary">
+          Select a session to view conversation
         </div>
 
-        <!-- Session Details Panel -->
-        <div v-if="selectedSession" class="mt-6 bg-bg-secondary rounded-lg p-6 border border-border-color">
-          <h3 class="text-lg font-semibold text-accent mb-4">Session Details</h3>
-          <div class="font-mono text-xs text-text-secondary mb-4 break-all">
-            ID: {{ selectedSession.id }}
-          </div>
-          <div class="text-sm text-text-secondary mb-2">
-            <span class="text-text-primary">Path:</span>
-            <div class="text-xs break-all">{{ selectedSession.path }}</div>
-          </div>
-          <div class="text-sm text-text-secondary mb-2">
-            <span class="text-text-primary">Created:</span> {{ formatDate(selectedSession.createdAt) }}
-          </div>
-          <div v-if="selectedSession.files?.length" class="mt-4">
-            <h4 class="text-sm font-medium text-text-primary mb-2">Files</h4>
-            <div class="flex flex-wrap gap-2">
-              <span
-                v-for="file in selectedSession.files"
-                :key="file"
-                class="text-xs text-text-secondary bg-bg-primary rounded px-2 py-1"
-              >
-                {{ file }}
+        <div v-else-if="loadingConversation" class="flex-1 flex items-center justify-center text-text-secondary">
+          Loading conversation...
+        </div>
+
+        <template v-else-if="selectedConversation">
+          <!-- Header -->
+          <div class="p-4 border-b border-border-color flex-shrink-0">
+            <div class="flex items-center gap-3 mb-1">
+              <span class="font-mono text-sm text-accent">{{ selectedConversation.sessionId }}</span>
+              <span class="text-xs px-2 py-0.5 rounded bg-bg-primary text-text-secondary">
+                {{ selectedConversation.messageCount }} messages
               </span>
             </div>
-          </div>
-        </div>
-      </div>
-
-      <div v-if="activeTab === 'history'">
-        <div v-if="history.length === 0" class="text-text-secondary">
-          No history entries
-        </div>
-        <div v-else class="space-y-2">
-          <div
-            v-for="(entry, index) in history"
-            :key="index"
-            @click="viewConversation(entry)"
-            class="bg-bg-secondary rounded-lg p-4 border border-border-color cursor-pointer hover:border-accent transition-colors"
-          >
-            <div class="flex items-start justify-between gap-4">
-              <div class="flex-1 min-w-0">
-                <div v-if="entry.timestamp" class="text-xs text-text-secondary mb-1">
-                  {{ formatDate(entry.timestamp) }}
-                </div>
-                <div v-if="entry.display" class="text-text-primary text-sm truncate">
-                  {{ entry.display }}
-                </div>
-                <div v-if="entry.project" class="text-xs text-text-secondary mt-1 truncate">
-                  {{ entry.project }}
-                </div>
-              </div>
-              <div class="text-xs text-accent">View →</div>
+            <div v-if="selectedConversation.cwd" class="text-xs text-text-secondary truncate">
+              {{ selectedConversation.cwd }}
             </div>
           </div>
+
+          <!-- Messages -->
+          <div class="flex-1 overflow-auto p-4 space-y-3">
+            <div
+              v-for="(msg, idx) in selectedConversation.messages"
+              :key="msg.uuid || idx"
+              class="rounded-lg p-3"
+              :class="{
+                'bg-accent/10 border-l-2 border-accent': msg.type === 'user',
+                'bg-bg-primary border border-border-color': msg.type === 'assistant',
+                'bg-purple-500/10 border-l-2 border-purple-500': msg.type === 'tool_result'
+              }"
+            >
+              <div class="flex items-center gap-2 mb-2">
+                <span
+                  class="text-xs font-medium px-2 py-0.5 rounded"
+                  :class="{
+                    'bg-accent/20 text-accent': msg.type === 'user',
+                    'bg-blue-500/20 text-blue-400': msg.type === 'assistant',
+                    'bg-purple-500/20 text-purple-400': msg.type === 'tool_result'
+                  }"
+                >
+                  {{ msg.role || msg.type }}
+                </span>
+                <span v-if="msg.timestamp" class="text-xs text-text-secondary">
+                  {{ formatDate(msg.timestamp) }}
+                </span>
+              </div>
+              <pre class="text-sm text-text-primary whitespace-pre-wrap break-words font-sans max-h-64 overflow-auto">{{ msg.content }}</pre>
+            </div>
+          </div>
+        </template>
+
+        <div v-else class="flex-1 flex items-center justify-center text-text-secondary">
+          No conversation data available
         </div>
       </div>
     </div>
-
-    <!-- Conversation Modal -->
-    <Teleport to="body">
-      <Transition name="modal">
-        <div
-          v-if="selectedConversation"
-          class="fixed inset-0 z-50 flex items-center justify-center p-4"
-          @click.self="closeModal"
-        >
-          <!-- Backdrop -->
-          <div class="absolute inset-0 bg-black/70 backdrop-blur-sm"></div>
-
-          <!-- Modal Card -->
-          <div
-            class="relative w-[95%] h-[90%] max-w-6xl bg-bg-secondary rounded-xl border border-border-color shadow-2xl flex flex-col overflow-hidden"
-            @click.stop
-          >
-            <!-- Header -->
-            <div class="flex items-start justify-between p-4 border-b border-border-color">
-              <div class="flex-1 pr-4">
-                <div class="flex items-center gap-3 mb-2">
-                  <h3 class="text-xl font-bold text-accent">Conversation</h3>
-                  <span class="text-xs px-2 py-1 rounded bg-bg-primary text-text-secondary">
-                    {{ selectedConversation.messageCount }} messages
-                  </span>
-                </div>
-                <div class="text-text-secondary text-xs">
-                  Session: {{ selectedConversation.sessionId }}
-                </div>
-                <div v-if="selectedConversation.cwd" class="text-text-secondary text-xs mt-1">
-                  Working Dir: {{ selectedConversation.cwd }}
-                </div>
-              </div>
-              <button
-                class="p-2 rounded-lg hover:bg-bg-primary transition-colors text-text-secondary hover:text-text-primary"
-                @click="closeModal"
-              >
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            <!-- Messages -->
-            <div class="flex-1 overflow-auto p-4 space-y-4">
-              <div
-                v-for="(msg, idx) in selectedConversation.messages"
-                :key="msg.uuid || idx"
-                class="rounded-lg p-4"
-                :class="{
-                  'bg-accent/10 border-l-4 border-accent': msg.type === 'user',
-                  'bg-bg-primary border border-border-color': msg.type === 'assistant',
-                  'bg-purple-500/10 border-l-4 border-purple-500': msg.type === 'tool_result'
-                }"
-              >
-                <div class="flex items-center gap-2 mb-2">
-                  <span
-                    class="text-xs font-medium px-2 py-0.5 rounded"
-                    :class="{
-                      'bg-accent/20 text-accent': msg.type === 'user',
-                      'bg-blue-500/20 text-blue-400': msg.type === 'assistant',
-                      'bg-purple-500/20 text-purple-400': msg.type === 'tool_result'
-                    }"
-                  >
-                    {{ msg.role || msg.type }}
-                  </span>
-                  <span v-if="msg.timestamp" class="text-xs text-text-secondary">
-                    {{ formatDate(msg.timestamp) }}
-                  </span>
-                </div>
-                <pre class="text-sm text-text-primary whitespace-pre-wrap break-words font-sans">{{ msg.content }}</pre>
-              </div>
-            </div>
-          </div>
-        </div>
-      </Transition>
-    </Teleport>
   </div>
 </template>
 
 <style scoped>
-.modal-enter-active,
-.modal-leave-active {
-  transition: opacity 0.2s ease;
+/* Custom scrollbar for messages */
+.overflow-auto::-webkit-scrollbar {
+  width: 6px;
 }
 
-.modal-enter-active .relative,
-.modal-leave-active .relative {
-  transition: transform 0.2s ease;
+.overflow-auto::-webkit-scrollbar-track {
+  background: transparent;
 }
 
-.modal-enter-from,
-.modal-leave-to {
-  opacity: 0;
+.overflow-auto::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
 }
 
-.modal-enter-from .relative,
-.modal-leave-to .relative {
-  transform: scale(0.95);
+.overflow-auto::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
 }
 </style>
