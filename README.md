@@ -28,6 +28,24 @@ npm install
 npm run build
 ```
 
+### Register the Skill
+
+To use `/claude-dashboard` command, create a skill directory:
+
+```bash
+# Create skill directory
+mkdir -p ~/.claude/skills/claude-dashboard
+
+# Copy skill file (replace /path/to/claude-dashboard with actual path)
+cp /path/to/claude-dashboard/skill.md ~/.claude/skills/claude-dashboard/
+```
+
+Or create a symlink for automatic updates:
+
+```bash
+ln -s /path/to/claude-dashboard ~/.claude/skills/claude-dashboard
+```
+
 ## Usage
 
 Once installed, you can launch the dashboard directly from Claude Code:

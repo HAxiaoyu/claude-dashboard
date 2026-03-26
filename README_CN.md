@@ -28,6 +28,24 @@ npm install
 npm run build
 ```
 
+### 注册技能
+
+要使用 `/claude-dashboard` 命令，需要创建技能目录：
+
+```bash
+# 创建技能目录
+mkdir -p ~/.claude/skills/claude-dashboard
+
+# 复制技能文件（将 /path/to/claude-dashboard 替换为实际路径）
+cp /path/to/claude-dashboard/skill.md ~/.claude/skills/claude-dashboard/
+```
+
+或者创建符号链接以便自动更新：
+
+```bash
+ln -s /path/to/claude-dashboard ~/.claude/skills/claude-dashboard
+```
+
 ## 使用方法
 
 安装完成后，可以直接在 Claude Code 中运行：
