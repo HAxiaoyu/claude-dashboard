@@ -12,6 +12,16 @@
 - **Sessions 历史** - 查看对话历史，支持展开消息详情
 - **设置查看** - 检查 Claude Code 设置和环境配置
 
+## 使用方法
+
+最方便的使用方式是直接在 Claude Code 中运行：
+
+```
+/claude-dashboard
+```
+
+这将自动启动仪表盘服务器并在浏览器中打开。
+
 ## 技术栈
 
 - **前端**: Vue 3 + TypeScript + TailwindCSS

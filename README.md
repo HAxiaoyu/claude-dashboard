@@ -12,6 +12,16 @@ A sleek web-based dashboard for viewing and managing Claude Code configuration.
 - **Sessions History** - View conversation history with expandable message details
 - **Settings View** - Inspect Claude Code settings and environment configuration
 
+## Usage
+
+The easiest way to use Claude Dashboard is directly from Claude Code:
+
+```
+/claude-dashboard
+```
+
+This will launch the dashboard server and open it in your browser automatically.
+
 ## Tech Stack
 
 - **Frontend**: Vue 3 + TypeScript + TailwindCSS
