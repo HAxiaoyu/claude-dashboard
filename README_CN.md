@@ -12,15 +12,39 @@
 - **Sessions 历史** - 查看对话历史，支持展开消息详情
 - **设置查看** - 检查 Claude Code 设置和环境配置
 
+## 安装
+
+```bash
+# 克隆仓库
+git clone https://github.com/HAxiaoyu/claude-dashboard.git
+
+# 进入目录
+cd claude-dashboard
+
+# 安装依赖
+npm install
+
+# 构建项目
+npm run build
+```
+
 ## 使用方法
 
-最方便的使用方式是直接在 Claude Code 中运行：
+安装完成后，可以直接在 Claude Code 中运行：
 
 ```
 /claude-dashboard
 ```
 
 这将自动启动仪表盘服务器并在浏览器中打开。
+
+或者手动启动：
+
+```bash
+npm run server
+```
+
+仪表盘将在 `http://localhost:3000` 启动。
 
 ## 技术栈
 

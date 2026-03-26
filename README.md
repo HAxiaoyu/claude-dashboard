@@ -12,15 +12,39 @@ A sleek web-based dashboard for viewing and managing Claude Code configuration.
 - **Sessions History** - View conversation history with expandable message details
 - **Settings View** - Inspect Claude Code settings and environment configuration
 
+## Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/HAxiaoyu/claude-dashboard.git
+
+# Enter the directory
+cd claude-dashboard
+
+# Install dependencies
+npm install
+
+# Build the project
+npm run build
+```
+
 ## Usage
 
-The easiest way to use Claude Dashboard is directly from Claude Code:
+Once installed, you can launch the dashboard directly from Claude Code:
 
 ```
 /claude-dashboard
 ```
 
-This will launch the dashboard server and open it in your browser automatically.
+This will start the dashboard server and open it in your browser automatically.
+
+Alternatively, you can start it manually:
+
+```bash
+npm run server
+```
+
+The dashboard will be available at `http://localhost:3000`.
 
 ## Tech Stack
 
