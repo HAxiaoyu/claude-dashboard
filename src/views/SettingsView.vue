@@ -88,71 +88,146 @@ async function saveSettings() {
 
     <div v-if="loading" class="text-text-secondary">Loading...</div>
 
-    <div v-else class="max-w-3xl">
-      <div class="bg-bg-secondary rounded-lg p-4 border border-border-color">
-        <div class="flex justify-between items-center mb-4">
-          <h3 class="text-lg font-semibold text-text-primary">Configuration</h3>
-          <button
-            v-if="!editMode"
-            @click="startEdit"
-            class="px-4 py-2 bg-accent text-bg-primary rounded hover:opacity-90 transition-opacity"
-          >
-            Edit
-          </button>
-        </div>
-
-        <div v-if="error" class="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded text-red-400 text-sm">
-          {{ error }}
-        </div>
-
-        <div v-if="success" class="mb-4 p-3 bg-green-500/20 border border-green-500/50 rounded text-green-400 text-sm">
-          {{ success }}
-        </div>
-
-        <div v-if="!editMode">
-          <pre class="bg-bg-primary p-4 rounded text-sm text-text-secondary overflow-auto max-h-96">{{ JSON.stringify(settings, null, 2) }}</pre>
-        </div>
-
-        <div v-else>
-          <textarea
-            v-model="editedSettings"
-            class="w-full h-96 bg-bg-primary p-4 rounded text-sm text-text-secondary font-mono border border-border-color focus:border-accent focus:outline-none resize-none"
-            spellcheck="false"
-          ></textarea>
-
-          <div class="flex gap-2 mt-4">
+    <div v-else class="flex gap-6">
+      <!-- Left Column: Configuration -->
+      <div class="flex-1 min-w-0">
+        <div class="bg-bg-secondary rounded-lg p-4 border border-border-color">
+          <div class="flex justify-between items-center mb-4">
+            <h3 class="text-lg font-semibold text-text-primary">Configuration</h3>
             <button
-              @click="saveSettings"
-              :disabled="saving"
-              class="px-4 py-2 bg-accent text-bg-primary rounded hover:opacity-90 transition-opacity disabled:opacity-50"
+              v-if="!editMode"
+              @click="startEdit"
+              class="px-4 py-2 bg-accent text-bg-primary rounded hover:opacity-90 transition-opacity"
             >
-              {{ saving ? 'Saving...' : 'Save' }}
+              Edit
             </button>
-            <button
-              @click="cancelEdit"
-              :disabled="saving"
-              class="px-4 py-2 bg-bg-primary text-text-secondary rounded border border-border-color hover:text-text-primary transition-colors disabled:opacity-50"
-            >
-              Cancel
-            </button>
+          </div>
+
+          <div v-if="error" class="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded text-red-400 text-sm">
+            {{ error }}
+          </div>
+
+          <div v-if="success" class="mb-4 p-3 bg-green-500/20 border border-green-500/50 rounded text-green-400 text-sm">
+            {{ success }}
+          </div>
+
+          <div v-if="!editMode">
+            <pre class="bg-bg-primary p-4 rounded text-sm text-text-secondary overflow-auto max-h-[calc(100vh-280px)]">{{ JSON.stringify(settings, null, 2) }}</pre>
+          </div>
+
+          <div v-else>
+            <textarea
+              v-model="editedSettings"
+              class="w-full bg-bg-primary p-4 rounded text-sm text-text-secondary font-mono border border-border-color focus:border-accent focus:outline-none resize-none"
+              style="height: calc(100vh - 340px)"
+              spellcheck="false"
+            ></textarea>
+
+            <div class="flex gap-2 mt-4">
+              <button
+                @click="saveSettings"
+                :disabled="saving"
+                class="px-4 py-2 bg-accent text-bg-primary rounded hover:opacity-90 transition-opacity disabled:opacity-50"
+              >
+                {{ saving ? 'Saving...' : 'Save' }}
+              </button>
+              <button
+                @click="cancelEdit"
+                :disabled="saving"
+                class="px-4 py-2 bg-bg-primary text-text-secondary rounded border border-border-color hover:text-text-primary transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
-      <div class="mt-6 bg-bg-secondary rounded-lg p-4 border border-border-color">
-        <h3 class="text-lg font-semibold text-text-primary mb-4">Settings Reference</h3>
-        <div class="space-y-3 text-sm">
-          <div>
-            <code class="text-accent">env</code>
-            <span class="text-text-secondary"> - Environment variables to pass to Claude Code</span>
-          </div>
-          <div>
-            <code class="text-accent">includeCoAuthoredBy</code>
-            <span class="text-text-secondary"> - Include co-authored-by in commits</span>
-          </div>
-          <div>
-            <code class="text-accent">enabledPlugins</code>
-            <span class="text-text-secondary"> - Enabled MCP plugins configuration</span>
+      <!-- Right Column: Settings Reference -->
+      <div class="w-[420px] flex-shrink-0">
+        <div class="bg-bg-secondary rounded-lg p-4 border border-border-color h-full overflow-auto max-h-[calc(100vh-200px)]">
+          <h3 class="text-lg font-semibold text-text-primary mb-4 sticky top-0 bg-bg-secondary pb-2">Settings Reference</h3>
+
+          <div class="space-y-4 text-sm">
+            <!-- env -->
+            <div class="border-b border-border-color pb-3">
+              <div class="flex items-center gap-2 mb-1">
+                <code class="text-accent bg-bg-primary px-2 py-0.5 rounded text-xs">env</code>
+                <span class="text-text-secondary text-xs">object</span>
+              </div>
+              <p class="text-text-secondary text-xs mb-2">Environment variables to pass to Claude Code and spawned processes.</p>
+              <pre class="bg-bg-primary p-2 rounded text-xs text-text-secondary overflow-x-auto">{ "env": { "DEBUG": "true" } }</pre>
+            </div>
+
+            <!-- includeCoAuthoredBy -->
+            <div class="border-b border-border-color pb-3">
+              <div class="flex items-center gap-2 mb-1">
+                <code class="text-accent bg-bg-primary px-2 py-0.5 rounded text-xs">includeCoAuthoredBy</code>
+                <span class="text-text-secondary text-xs">boolean</span>
+              </div>
+              <p class="text-text-secondary text-xs mb-2">Include "Co-authored-by: Claude" in git commits.</p>
+              <pre class="bg-bg-primary p-2 rounded text-xs text-text-secondary overflow-x-auto">{ "includeCoAuthoredBy": true }</pre>
+            </div>
+
+            <!-- enabledPlugins -->
+            <div class="border-b border-border-color pb-3">
+              <div class="flex items-center gap-2 mb-1">
+                <code class="text-accent bg-bg-primary px-2 py-0.5 rounded text-xs">enabledPlugins</code>
+                <span class="text-text-secondary text-xs">object</span>
+              </div>
+              <p class="text-text-secondary text-xs mb-2">Enable or disable MCP plugins.</p>
+              <pre class="bg-bg-primary p-2 rounded text-xs text-text-secondary overflow-x-auto">{ "enabledPlugins": { "plugin": true } }</pre>
+            </div>
+
+            <!-- hooks -->
+            <div class="border-b border-border-color pb-3">
+              <div class="flex items-center gap-2 mb-1">
+                <code class="text-accent bg-bg-primary px-2 py-0.5 rounded text-xs">hooks</code>
+                <span class="text-text-secondary text-xs">object</span>
+              </div>
+              <p class="text-text-secondary text-xs mb-2">Shell commands on events (PreToolUse, PostToolUse, Stop, etc.).</p>
+              <pre class="bg-bg-primary p-2 rounded text-xs text-text-secondary overflow-x-auto">{ "hooks": { "PreToolUse": [...] } }</pre>
+            </div>
+
+            <!-- permissions -->
+            <div class="border-b border-border-color pb-3">
+              <div class="flex items-center gap-2 mb-1">
+                <code class="text-accent bg-bg-primary px-2 py-0.5 rounded text-xs">permissions</code>
+                <span class="text-text-secondary text-xs">object</span>
+              </div>
+              <p class="text-text-secondary text-xs mb-2">Tool permissions (allow/deny) for Bash, Edit, Write, etc.</p>
+              <pre class="bg-bg-primary p-2 rounded text-xs text-text-secondary overflow-x-auto">{ "permissions": { "allow": [...] } }</pre>
+            </div>
+
+            <!-- model -->
+            <div class="border-b border-border-color pb-3">
+              <div class="flex items-center gap-2 mb-1">
+                <code class="text-accent bg-bg-primary px-2 py-0.5 rounded text-xs">model</code>
+                <span class="text-text-secondary text-xs">string</span>
+              </div>
+              <p class="text-text-secondary text-xs mb-2">Default model: claude-opus-4-6, claude-sonnet-4-6, claude-haiku-4-5.</p>
+              <pre class="bg-bg-primary p-2 rounded text-xs text-text-secondary overflow-x-auto">{ "model": "claude-sonnet-4-6" }</pre>
+            </div>
+
+            <!-- mcpServers -->
+            <div class="border-b border-border-color pb-3">
+              <div class="flex items-center gap-2 mb-1">
+                <code class="text-accent bg-bg-primary px-2 py-0.5 rounded text-xs">mcpServers</code>
+                <span class="text-text-secondary text-xs">object</span>
+              </div>
+              <p class="text-text-secondary text-xs mb-2">MCP servers for extended capabilities.</p>
+              <pre class="bg-bg-primary p-2 rounded text-xs text-text-secondary overflow-x-auto">{ "mcpServers": { "my-server": {...} } }</pre>
+            </div>
+
+            <!-- theme -->
+            <div>
+              <div class="flex items-center gap-2 mb-1">
+                <code class="text-accent bg-bg-primary px-2 py-0.5 rounded text-xs">theme</code>
+                <span class="text-text-secondary text-xs">string</span>
+              </div>
+              <p class="text-text-secondary text-xs mb-2">UI theme: light, dark, system.</p>
+              <pre class="bg-bg-primary p-2 rounded text-xs text-text-secondary overflow-x-auto">{ "theme": "dark" }</pre>
+            </div>
           </div>
         </div>
       </div>
