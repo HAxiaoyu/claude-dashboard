@@ -1,5 +1,8 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import SearchInput from '@/components/common/SearchInput.vue'
+import SessionSkeleton from '@/components/common/SessionSkeleton.vue'
+import { useWebSocket } from '@/composables/useWebSocket'
 
 interface HistoryEntry {
   timestamp?: number
@@ -39,6 +42,18 @@ const selectedConversation = ref<Conversation | null>(null)
 const loading = ref(true)
 const loadingConversation = ref(false)
 const error = ref('')
+const searchQuery = ref('')
+const searchInputRef = ref<InstanceType<typeof SearchInput> | null>(null)
+const pageSize = 20
+const currentPage = ref(1)
+
+// WebSocket connection
+const { connected } = useWebSocket()
+
+// Watch for search changes to reset page
+watch(searchQuery, () => {
+  currentPage.value = 1
+})
 
 // Group history by session id
 const groupedSessions = computed<GroupedSession[]>(() => {
@@ -71,6 +86,38 @@ const groupedSessions = computed<GroupedSession[]>(() => {
     (b.lastTimestamp || 0) - (a.lastTimestamp || 0)
   )
 })
+
+// Filter sessions by search query
+const filteredSessions = computed(() => {
+  if (!searchQuery.value.trim()) return groupedSessions.value
+
+  const query = searchQuery.value.toLowerCase()
+  return groupedSessions.value.filter(session => {
+    const sessionId = session.sessionId?.toLowerCase() || ''
+    const project = session.project?.toLowerCase() || ''
+    const displays = session.displays.join(' ').toLowerCase()
+    return sessionId.includes(query) || project.includes(query) || displays.includes(query)
+  })
+})
+
+// Pagination
+const totalPages = computed(() => Math.ceil(filteredSessions.value.length / pageSize))
+const paginatedSessions = computed(() => {
+  const start = (currentPage.value - 1) * pageSize
+  return filteredSessions.value.slice(start, start + pageSize)
+})
+
+function nextPage() {
+  if (currentPage.value < totalPages.value) {
+    currentPage.value++
+  }
+}
+
+function prevPage() {
+  if (currentPage.value > 1) {
+    currentPage.value--
+  }
+}
 
 async function fetchHistory() {
   try {
@@ -112,27 +159,81 @@ function truncateId(id: string, len: number = 8): string {
   return id.length > len ? id.substring(0, len) + '...' : id
 }
 
+function handleKeydown(e: KeyboardEvent) {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+    e.preventDefault()
+    searchInputRef.value?.focus()
+  }
+}
+
 onMounted(() => {
   fetchHistory()
+  window.addEventListener('keydown', handleKeydown)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeydown)
 })
 </script>
 
 <template>
   <div>
-    <h2 class="text-2xl font-bold text-text-primary mb-6">Sessions</h2>
+    <!-- Header with search -->
+    <div class="flex items-center justify-between mb-6 gap-4">
+      <h2 class="text-2xl font-bold text-text-primary flex-shrink-0">
+        Sessions
+        <span
+          :class="connected ? 'text-green-400' : 'text-text-secondary'"
+          class="text-xs ml-2"
+          :title="connected ? 'Real-time updates active' : 'Disconnected'"
+        >
+          {{ connected ? '●' : '○' }}
+        </span>
+      </h2>
+      <div class="flex items-center gap-3">
+        <span class="text-sm text-text-secondary">
+          {{ filteredSessions.length }} of {{ groupedSessions.length }}
+        </span>
+        <div class="w-64">
+          <SearchInput
+            ref="searchInputRef"
+            v-model="searchQuery"
+            placeholder="Search sessions... (Ctrl+K)"
+          />
+        </div>
+      </div>
+    </div>
 
-    <div v-if="loading" class="text-text-secondary">Loading...</div>
+    <!-- Loading skeleton -->
+    <SessionSkeleton v-if="loading" />
+
+    <!-- Error state -->
     <div v-else-if="error" class="text-red-500">{{ error }}</div>
 
     <div v-else class="flex gap-6 h-[calc(100vh-180px)]">
       <!-- Left: Session List -->
       <div class="w-80 flex-shrink-0 bg-bg-secondary rounded-lg border border-border-color flex flex-col">
-        <div class="p-3 border-b border-border-color">
-          <span class="text-sm text-text-secondary">{{ groupedSessions.length }} sessions</span>
+        <div class="p-3 border-b border-border-color flex justify-between items-center">
+          <span class="text-sm text-text-secondary">{{ filteredSessions.length }} sessions</span>
+          <button
+            v-if="searchQuery"
+            @click="searchQuery = ''"
+            class="text-xs text-accent hover:underline"
+          >
+            Clear
+          </button>
         </div>
         <div class="flex-1 overflow-auto">
+          <!-- No results -->
           <div
-            v-for="session in groupedSessions"
+            v-if="filteredSessions.length === 0 && searchQuery"
+            class="p-4 text-center text-text-secondary text-sm"
+          >
+            No sessions found
+          </div>
+
+          <div
+            v-for="session in paginatedSessions"
             :key="session.sessionId"
             @click="selectSession(session.sessionId)"
             class="p-3 border-b border-border-color cursor-pointer transition-colors"
@@ -153,6 +254,26 @@ onMounted(() => {
             </div>
           </div>
         </div>
+        <!-- Pagination -->
+        <div v-if="totalPages > 1" class="p-2 border-t border-border-color flex items-center justify-between">
+          <button
+            @click="prevPage"
+            :disabled="currentPage === 1"
+            class="px-2 py-1 text-xs rounded bg-bg-primary text-text-secondary disabled:opacity-50 disabled:cursor-not-allowed hover:text-text-primary"
+          >
+            ← Prev
+          </button>
+          <span class="text-xs text-text-secondary">
+            {{ currentPage }} / {{ totalPages }}
+          </span>
+          <button
+            @click="nextPage"
+            :disabled="currentPage === totalPages"
+            class="px-2 py-1 text-xs rounded bg-bg-primary text-text-secondary disabled:opacity-50 disabled:cursor-not-allowed hover:text-text-primary"
+          >
+            Next →
+          </button>
+        </div>
       </div>
 
       <!-- Right: Conversation View -->
@@ -162,7 +283,13 @@ onMounted(() => {
         </div>
 
         <div v-else-if="loadingConversation" class="flex-1 flex items-center justify-center text-text-secondary">
-          Loading conversation...
+          <div class="flex items-center gap-3">
+            <svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            Loading conversation...
+          </div>
         </div>
 
         <template v-else-if="selectedConversation">

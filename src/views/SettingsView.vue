@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import SettingsSkeleton from '@/components/common/SettingsSkeleton.vue'
+import { useRealtimeReload } from '@/composables/useWebSocket'
 
 interface Settings {
   [key: string]: unknown
@@ -12,6 +14,10 @@ const saving = ref(false)
 const error = ref('')
 const success = ref('')
 const editMode = ref(false)
+const jsonValid = ref(true)
+
+// Real-time reload
+const { connected } = useRealtimeReload('settings', fetchSettings)
 
 onMounted(async () => {
   await fetchSettings()
@@ -30,11 +36,34 @@ async function fetchSettings() {
   }
 }
 
+function validateJson(value: string) {
+  try {
+    JSON.parse(value)
+    jsonValid.value = true
+    return true
+  } catch {
+    jsonValid.value = false
+    return false
+  }
+}
+
+function formatJson() {
+  try {
+    const parsed = JSON.parse(editedSettings.value)
+    editedSettings.value = JSON.stringify(parsed, null, 2)
+    jsonValid.value = true
+    error.value = ''
+  } catch {
+    error.value = 'Cannot format invalid JSON'
+  }
+}
+
 function startEdit() {
   editedSettings.value = JSON.stringify(settings.value, null, 2)
   editMode.value = true
   error.value = ''
   success.value = ''
+  jsonValid.value = true
 }
 
 function cancelEdit() {
@@ -84,9 +113,19 @@ async function saveSettings() {
 
 <template>
   <div>
-    <h2 class="text-2xl font-bold text-text-primary mb-6">Settings</h2>
+    <h2 class="text-2xl font-bold text-text-primary mb-6">
+    Settings
+    <span
+      :class="connected ? 'text-green-400' : 'text-text-secondary'"
+      class="text-xs ml-2"
+      :title="connected ? 'Real-time updates active' : 'Disconnected'"
+    >
+      {{ connected ? '●' : '○' }}
+    </span>
+  </h2>
 
-    <div v-if="loading" class="text-text-secondary">Loading...</div>
+    <!-- Loading skeleton -->
+    <SettingsSkeleton v-if="loading" />
 
     <div v-else class="flex gap-6">
       <!-- Left Column: Configuration -->
@@ -116,20 +155,43 @@ async function saveSettings() {
           </div>
 
           <div v-else>
+            <div class="flex items-center justify-between mb-2">
+              <span
+                class="text-xs"
+                :class="jsonValid ? 'text-green-400' : 'text-red-400'"
+              >
+                {{ jsonValid ? '✓ Valid JSON' : '✗ Invalid JSON' }}
+              </span>
+              <button
+                @click="formatJson"
+                class="text-xs text-accent hover:underline"
+              >
+                Format
+              </button>
+            </div>
             <textarea
               v-model="editedSettings"
-              class="w-full bg-bg-primary p-4 rounded text-sm text-text-secondary font-mono border border-border-color focus:border-accent focus:outline-none resize-none"
-              style="height: calc(100vh - 340px)"
+              @input="validateJson(editedSettings)"
+              class="w-full bg-bg-primary p-4 rounded text-sm text-text-secondary font-mono border focus:outline-none resize-none"
+              :class="jsonValid ? 'border-border-color focus:border-accent' : 'border-red-500'"
+              style="height: calc(100vh - 400px)"
               spellcheck="false"
             ></textarea>
 
             <div class="flex gap-2 mt-4">
               <button
                 @click="saveSettings"
-                :disabled="saving"
+                :disabled="saving || !jsonValid"
                 class="px-4 py-2 bg-accent text-bg-primary rounded hover:opacity-90 transition-opacity disabled:opacity-50"
               >
                 {{ saving ? 'Saving...' : 'Save' }}
+              </button>
+              <button
+                @click="formatJson"
+                :disabled="!jsonValid"
+                class="px-4 py-2 bg-bg-primary text-text-secondary rounded border border-border-color hover:text-text-primary transition-colors disabled:opacity-50"
+              >
+                Format
               </button>
               <button
                 @click="cancelEdit"

@@ -1,11 +1,39 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import type { Agent } from '@/types'
+import SearchInput from '@/components/common/SearchInput.vue'
+import { useRealtimeReload } from '@/composables/useWebSocket'
 
 const agents = ref<Agent[]>([])
 const selectedAgent = ref<Agent | null>(null)
 const loading = ref(true)
 const error = ref('')
+const searchQuery = ref('')
+const searchInputRef = ref<InstanceType<typeof SearchInput> | null>(null)
+
+// Real-time reload
+const { connected } = useRealtimeReload('agents', fetchAgents)
+
+// Filter agents by search query
+const filteredAgents = computed(() => {
+  if (!searchQuery.value.trim()) return agents.value
+
+  const query = searchQuery.value.toLowerCase()
+  return agents.value.filter(agent => {
+    const name = agent.name?.toLowerCase() || ''
+    const description = agent.description?.toLowerCase() || ''
+    const id = agent.id?.toLowerCase() || ''
+    return name.includes(query) || description.includes(query) || id.includes(query)
+  })
+})
+
+// Group agents by source
+const agentGroups = computed(() => {
+  const builtin = filteredAgents.value.filter(a => !a.source || a.source === 'builtin')
+  const user = filteredAgents.value.filter(a => a.source === 'user')
+  const project = filteredAgents.value.filter(a => a.source === 'project')
+  return { builtin, user, project }
+})
 
 async function fetchAgents() {
   try {
@@ -34,8 +62,14 @@ function closeModal() {
 }
 
 function handleKeydown(e: KeyboardEvent) {
-  if (e.key === 'Escape') {
+  if (e.key === 'Escape' && selectedAgent.value) {
     closeModal()
+    return
+  }
+
+  if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+    e.preventDefault()
+    searchInputRef.value?.focus()
   }
 }
 
@@ -84,33 +118,147 @@ onUnmounted(() => {
 
 <template>
   <div>
-    <h2 class="text-2xl font-bold text-text-primary mb-6">Agents</h2>
-
-    <div v-if="loading" class="text-text-secondary">Loading...</div>
-    <div v-else-if="error" class="text-red-500">{{ error }}</div>
-
-    <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <div
-        v-for="agent in agents"
-        :key="agent.id"
-        class="bg-bg-secondary rounded-lg p-4 border border-border-color hover:border-accent transition-colors cursor-pointer"
-        @click="selectAgent(agent)"
-      >
-        <div class="flex items-center justify-between mb-2">
-          <h3 class="text-text-primary font-medium">{{ agent.name }}</h3>
-          <div class="flex items-center gap-2">
-            <span class="w-2 h-2 rounded-full" :class="getStatusColor(agent.status)"></span>
-            <span
-              class="text-xs px-2 py-1 rounded"
-              :class="getSourceColor(agent.source || 'builtin')"
-            >
-              {{ getSourceLabel(agent.source || 'builtin') }}
-            </span>
-          </div>
+    <!-- Header with search -->
+    <div class="flex items-center justify-between mb-6 gap-4">
+      <h2 class="text-2xl font-bold text-text-primary flex-shrink-0">
+        Agents
+        <span
+          :class="connected ? 'text-green-400' : 'text-text-secondary'"
+          class="text-xs ml-2"
+          :title="connected ? 'Real-time updates active' : 'Disconnected'"
+        >
+          {{ connected ? '●' : '○' }}
+        </span>
+      </h2>
+      <div class="flex items-center gap-3">
+        <span class="text-sm text-text-secondary">
+          {{ filteredAgents.length }} of {{ agents.length }}
+        </span>
+        <div class="w-64">
+          <SearchInput
+            ref="searchInputRef"
+            v-model="searchQuery"
+            placeholder="Search agents... (Ctrl+K)"
+          />
         </div>
-        <p class="text-text-secondary text-sm line-clamp-2">{{ agent.description }}</p>
       </div>
     </div>
+
+    <!-- Loading skeleton -->
+    <div v-if="loading" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div v-for="i in 4" :key="i" class="bg-bg-secondary rounded-lg p-4 border border-border-color animate-pulse">
+        <div class="flex justify-between mb-3">
+          <div class="h-5 bg-bg-primary/50 rounded w-32"></div>
+          <div class="h-5 bg-bg-primary/50 rounded w-16"></div>
+        </div>
+        <div class="h-4 bg-bg-primary/50 rounded w-full mb-2"></div>
+        <div class="h-4 bg-bg-primary/50 rounded w-3/4"></div>
+      </div>
+    </div>
+
+    <!-- Error state -->
+    <div v-else-if="error" class="text-red-500">{{ error }}</div>
+
+    <!-- No results -->
+    <div
+      v-else-if="filteredAgents.length === 0 && searchQuery"
+      class="text-center py-12"
+    >
+      <svg class="w-12 h-12 mx-auto text-text-secondary mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+      <p class="text-text-secondary">No agents found matching "{{ searchQuery }}"</p>
+      <button
+        @click="searchQuery = ''"
+        class="mt-2 text-accent hover:underline text-sm"
+      >
+        Clear search
+      </button>
+    </div>
+
+    <!-- Agents grouped by source -->
+    <template v-else>
+      <!-- Builtin Agents -->
+      <div v-if="agentGroups.builtin.length > 0" class="mb-8">
+        <h3 class="text-sm font-medium text-text-secondary uppercase tracking-wider mb-4">
+          Built-in ({{ agentGroups.builtin.length }})
+        </h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div
+            v-for="agent in agentGroups.builtin"
+            :key="agent.id"
+            class="bg-bg-secondary rounded-lg p-4 border border-border-color hover:border-accent transition-colors cursor-pointer"
+            @click="selectAgent(agent)"
+          >
+            <div class="flex items-center justify-between mb-2">
+              <h3 class="text-text-primary font-medium">{{ agent.name }}</h3>
+              <div class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full" :class="getStatusColor(agent.status)"></span>
+                <span
+                  class="text-xs px-2 py-1 rounded"
+                  :class="getSourceColor(agent.source || 'builtin')"
+                >
+                  {{ getSourceLabel(agent.source || 'builtin') }}
+                </span>
+              </div>
+            </div>
+            <p class="text-text-secondary text-sm line-clamp-2">{{ agent.description }}</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- User Agents -->
+      <div v-if="agentGroups.user.length > 0" class="mb-8">
+        <h3 class="text-sm font-medium text-text-secondary uppercase tracking-wider mb-4">
+          User Agents ({{ agentGroups.user.length }})
+        </h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div
+            v-for="agent in agentGroups.user"
+            :key="agent.id"
+            class="bg-bg-secondary rounded-lg p-4 border border-border-color hover:border-accent transition-colors cursor-pointer"
+            @click="selectAgent(agent)"
+          >
+            <div class="flex items-center justify-between mb-2">
+              <h3 class="text-text-primary font-medium">{{ agent.name }}</h3>
+              <span
+                class="text-xs px-2 py-1 rounded"
+                :class="getSourceColor(agent.source || 'user')"
+              >
+                {{ getSourceLabel(agent.source || 'user') }}
+              </span>
+            </div>
+            <p class="text-text-secondary text-sm line-clamp-2">{{ agent.description }}</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Project Agents -->
+      <div v-if="agentGroups.project.length > 0">
+        <h3 class="text-sm font-medium text-text-secondary uppercase tracking-wider mb-4">
+          Project Agents ({{ agentGroups.project.length }})
+        </h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div
+            v-for="agent in agentGroups.project"
+            :key="agent.id"
+            class="bg-bg-secondary rounded-lg p-4 border border-border-color hover:border-accent transition-colors cursor-pointer"
+            @click="selectAgent(agent)"
+          >
+            <div class="flex items-center justify-between mb-2">
+              <h3 class="text-text-primary font-medium">{{ agent.name }}</h3>
+              <span
+                class="text-xs px-2 py-1 rounded"
+                :class="getSourceColor(agent.source || 'project')"
+              >
+                {{ getSourceLabel(agent.source || 'project') }}
+              </span>
+            </div>
+            <p class="text-text-secondary text-sm line-clamp-2">{{ agent.description }}</p>
+          </div>
+        </div>
+      </div>
+    </template>
 
     <!-- Modal -->
     <Teleport to="body">
